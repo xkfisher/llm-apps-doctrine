@@ -26,19 +26,19 @@ HTTP_OK: int = 200
 # those as context to the LLM).
 MODE_RAG: str = 'RAG'
 MODE_TEXT2TEXT: str = 'Text Generation'
-MODE_VALUES: List[str] = [MODE_RAG, MODE_TEXT2TEXT]
+MODE_VALUES: List[str] = [MODE_RAG]
 
 # Currently we use the flan-t5-xxl for text generation
 # and gpt-j-6b for embeddings but in future we could support more
-TEXT2TEXT_MODEL_LIST: List[str] = ["flan-t5-xxl"]
-EMBEDDINGS_MODEL_LIST: List[str] = ["gpt-j-6b"]
+TEXT2TEXT_MODEL_LIST: List[str] = ["flan-t5-xxl", "falcon-7b"]
+EMBEDDINGS_MODEL_LIST: List[str] = ["gpt-j-6b","Bedrock Titan", "Falcon-7b-embed"]
 
 # if running this app on a compute environment that has
 # IAM cloudformation::DescribeStacks access read the 
 # stack outputs to get the name of the LLM endpoint
 CFN_ACCESS = False
 if CFN_ACCESS is True:
-    CFN_STACK_NAME: str = "llm-apps-blog-rag"
+    CFN_STACK_NAME: str = "llm-apps-blog-rag2"
     outputs = get_cfn_outputs(CFN_STACK_NAME)
 else:
     # create an outputs dictionary with keys of interest
@@ -46,7 +46,7 @@ else:
     # running this app
     outputs: Dict = {}
     # REPLACE __API_GW_ENDPOINT__ WITH ACTUAL API GW ENDPOINT URL
-    outputs["LLMAppAPIEndpoint"] = "__API_GW_ENDPOINT__"
+    outputs["LLMAppAPIEndpoint"] = "https://jqiv4luk6h.execute-api.us-east-1.amazonaws.com/prod/"
 
 # API endpoint
 # this is retrieved from the cloud formation template that was
@@ -54,14 +54,14 @@ else:
 api: str = outputs.get("LLMAppAPIEndpoint")
 api_rag_ep: str = f"{api}/api/v1/llm/rag"
 api_text2text_ep: str = f"{api}/api/v1/llm/text2text"
-print(f"api_rag_ep={api_rag_ep}\napi_text2text_ep={api_text2text_ep}")
+# st.write(f"api_rag_ep={api_rag_ep}\napi_text2text_ep={api_text2text_ep}")
 
 ####################
 # Streamlit code
 ####################
 
 # Page title
-st.set_page_config(page_title='Virtual assistant for knowledge base 👩‍💻', layout='wide')
+st.set_page_config(page_title='Virtual assistant for army doctrine', layout='wide')
 
 # keep track of conversations by using streamlit_session
 _ = [st.session_state.setdefault(k, v) for k,v in STREAMLIT_SESSION_VARS]
@@ -84,14 +84,17 @@ def get_user_input() -> str:
 with st.sidebar.expander("⚙️", expanded=True):
     text2text_model = st.selectbox(label='Text2Text Model', options=TEXT2TEXT_MODEL_LIST)
     embeddings_model = st.selectbox(label='Embeddings Model', options=EMBEDDINGS_MODEL_LIST)
-    mode = st.selectbox(label='Mode', options=MODE_VALUES)
+    # mode = st.selectbox(label='Mode', options=MODE_VALUES)
+    temperature = st.slider(label ="Temperature", min_value = 0.1, max_value = 0.5, step = 0.1)
+    topn = st.slider(label = "Top P", min_value = 0.1, max_value = 0.5, step = 0.1)
+    topk = st.slider(label = "Top K", min_value = 1, max_value = 10, step = 1)
     
 
 # streamlit app layout sidebar + main panel
 # the main panel has a title, a sub header and user input textbox
 # and a text area for response and history
-st.title("👩‍💻 Virtual assistant for a knowledge base")
-st.subheader(f" Powered by :blue[{TEXT2TEXT_MODEL_LIST[0]}] for text generation and :blue[{EMBEDDINGS_MODEL_LIST[0]}] for embeddings")
+st.title("Virtual assistant for army doctrine")
+# st.subheader(f" Powered by :blue[{TEXT2TEXT_MODEL_LIST[0]}] for text generation and :blue[{EMBEDDINGS_MODEL_LIST[0]}] for embeddings")
 
 # get user input
 user_input: str = get_user_input()
@@ -100,26 +103,19 @@ user_input: str = get_user_input()
 if user_input:
     # headers for request and response encoding, same for both endpoints
     headers: Dict = {"accept": "application/json", "Content-Type": "application/json"}
-    output: str = None
-    if mode == MODE_TEXT2TEXT:        
-        data = {"q": user_input}
-        resp = req.post(api_text2text_ep, headers=headers, json=data)
-        if resp.status_code != HTTP_OK:
-            output = resp.text
-        else:
-            output = resp.json()['answer'][0]
-    elif mode == MODE_RAG:        
-        data = {"q": user_input, "verbose": True}
-        resp = req.post(api_rag_ep, headers=headers, json=data)
-        if resp.status_code != HTTP_OK:
-            output = resp.text
-        else:
-            resp = resp.json()
-            sources = [d['metadata']['source'] for d in resp['docs']]
-            output = f"{resp['answer']} \n \n Sources: {sources}"
+    output: str = None       
+    data = {"q": user_input, "verbose": True}
+    # st.write(api_rag_ep)
+    resp = req.post(api_rag_ep, headers=headers, json=data)
+    if resp.status_code != HTTP_OK:
+        output = resp.text
     else:
-        print("error")
-        output = f"unhandled mode value={mode}"
+        resp = resp.json()
+        sources = [d['metadata']['source'] for d in resp['docs']]
+        output = f"{resp['answer']} \n \n Sources: {sources}"
+    # else:
+    #     print("error")
+    #     output = f"unhandled mode value={mode}"
     st.session_state.past.append(user_input)  
     st.session_state.generated.append(output) 
 
